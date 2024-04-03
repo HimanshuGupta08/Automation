@@ -1,0 +1,188 @@
+name: 'Grant_KeyVault_Access'
+
+on:
+  workflow_dispatch:
+    inputs:
+      infra_env:
+        type: choice
+        description: 'Select Subscription'
+        options:
+          - 'Dev'
+          - 'Sandbox-01'
+          - 'mcd-corp-nonprod'
+          - 'mcd-corp-prod'
+
+      User_type:
+        type: choice
+        description: 'Select Type'
+        options:
+          - 'User'
+          - 'Service Principal(SPN)'
+          - 'Groups'
+
+      Principal_Name:
+        description: 'Provide ServicePrincipal Name/ User Email ID/ Group Name'
+        required: true
+
+      Role_Name:
+        type: choice
+        description: 'Select Role'
+        options:
+          - 'Reader'
+          - 'Contributor'
+          - 'MCD-CloudEQ-Contributor'
+          - 'Security Admin'
+          - 'Security Reader'
+
+      ResourceGroup_Name:
+         description: 'Provide ResourceGroup Name'
+         required: true
+
+      KeyVault_Name:
+         description: 'Provide KeyVault Name'
+         required: true
+      
+jobs:
+  Grant_KeyVault_Access_Review:
+    name: "Grant_KeyVault_Access_Review"
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        shell: bash
+        
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+      
+    - name: "Setting Environment"
+      env:
+        DEV: ${{ contains(github.event.inputs.infra_env, 'dev') }}
+      run: |
+        if ${DEV} == true; then
+          echo "ARM_CLIENT_ID=${{secrets.CEQ_AZURE_SANDBOX_TF_ARM_CLIENT_ID}}" >> $GITHUB_ENV
+          echo "ARM_CLIENT_SECRET=${{secrets.CEQ_AZURE_SANDBOX_TF_ARM_CLIENT_SECRET}}" >> $GITHUB_ENV
+          echo "ARM_SUBSCRIPTION_ID=${{secrets.CEQ_AZURE_SANDBOX_TF_ARM_SUBS_ID}}" >> $GITHUB_ENV
+          echo "ARM_TENANT_ID=${{secrets.CEQ_AZURE_SANDBOX_TF_ARM_TENANT_ID}}" >> $GITHUB_ENV
+          echo "TFSTATE_RG=cloudeq" >> $GITHUB_ENV
+          echo "TFSTATE_STORAGE_ACCOUNT=ceqstoragecd02" >> $GITHUB_ENV
+          echo "TFSTATE_CONTAINER=tfstate" >> $GITHUB_ENV
+          echo "ENV=dev" >> $GITHUB_ENV
+        else
+          echo "environment not supported"
+          exit 1
+        fi      
+
+    # Checkout the repository to the GitHub Actions runner 
+    - name: Login to azure
+      uses: azure/login@v1
+      with:
+           creds: '{"clientId":"${{ env.ARM_CLIENT_ID }}","clientSecret":"${{ env.ARM_CLIENT_SECRET }}","subscriptionId":"${{ env.ARM_SUBSCRIPTION_ID }}","tenantId":"${{ env.ARM_TENANT_ID }}"}'
+           enable-AzPSSession: true
+
+    - name: Download Azure Dependencies Modules
+      uses: azure/powershell@v1
+      with:
+         inlineScript: | 
+                Install-Module -Name Az.Compute -Force -AllowClobber
+                Install-Module -Name Az.Storage -Force -AllowClobber
+                Install-Module -Name Az.Network -Force -AllowClobber 
+                Install-Module -Name Az.Resources -Force -AllowClobber
+         azPSVersion: '5.0.0'
+    
+    - name: Plan Review Step
+      uses: azure/powershell@v1
+      with:
+         inlineScript: | 
+
+                $KeyVaultAccountName = "${{github.event.inputs.KeyVault_Name}}"
+                $ResourceGroupName = "${{github.event.inputs.ResourceGroup_Name}}"
+
+                if ("${{github.event.inputs.User_type}}" -eq "User") {
+                  Write-Host "Role '${{ inputs.Role_Name }}' assigning to user '${{ inputs.Principal_Name }}' on the KeyVault '$KeyVaultAccountName' under Resource group '$ResourceGroupName'."
+                  }
+                if ("${{github.event.inputs.User_type}}" -eq "Service Principal(SPN)") {
+                  Write-Host "Role '${{ inputs.Role_Name }}' assigning to Service Principal '${{ inputs.Principal_Name }}' on the KeyVault '$KeyVaultAccountName' under Resource group '$ResourceGroupName'."
+                  }
+                if ("${{github.event.inputs.User_type}}" -eq "Groups") {
+                  Write-Host "Role '${{ inputs.Role_Name }}' assigning to Group '${{ inputs.Principal_Name }}' on the KeyVault '$KeyVaultAccountName' under Resource group '$ResourceGroupName'."
+                  }
+         azPSVersion: '5.0.0'
+
+  Grant_KeyVault_Access:
+    name: "Grant_KeyVault_Access"
+    runs-on: ubuntu-latest
+    needs: ["Grant_KeyVault_Access_Review"]
+
+    environment:
+      name: Deployment_Review 
+    
+    defaults:
+      run:
+        shell: bash
+        
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+      
+    - name: "Setting Environment"
+      env:
+        DEV: ${{ contains(github.event.inputs.infra_env, 'dev') }}
+      run: |
+        if ${DEV} == true; then
+          echo "ARM_CLIENT_ID=${{secrets.CEQ_AZURE_SANDBOX_TF_ARM_CLIENT_ID}}" >> $GITHUB_ENV
+          echo "ARM_CLIENT_SECRET=${{secrets.CEQ_AZURE_SANDBOX_TF_ARM_CLIENT_SECRET}}" >> $GITHUB_ENV
+          echo "ARM_SUBSCRIPTION_ID=${{secrets.CEQ_AZURE_SANDBOX_TF_ARM_SUBS_ID}}" >> $GITHUB_ENV
+          echo "ARM_TENANT_ID=${{secrets.CEQ_AZURE_SANDBOX_TF_ARM_TENANT_ID}}" >> $GITHUB_ENV
+          echo "TFSTATE_RG=cloudeq" >> $GITHUB_ENV
+          echo "TFSTATE_STORAGE_ACCOUNT=ceqstoragecd02" >> $GITHUB_ENV
+          echo "TFSTATE_CONTAINER=tfstate" >> $GITHUB_ENV
+          echo "ENV=dev" >> $GITHUB_ENV
+        else
+          echo "environment not supported"
+          exit 1
+        fi
+      
+    # Checkout the repository to the GitHub Actions runner 
+    - name: Login to azure
+      uses: azure/login@v1
+      with:
+           creds: '{"clientId":"${{ env.ARM_CLIENT_ID }}","clientSecret":"${{ env.ARM_CLIENT_SECRET }}","subscriptionId":"${{ env.ARM_SUBSCRIPTION_ID }}","tenantId":"${{ env.ARM_TENANT_ID }}"}'
+           enable-AzPSSession: true
+
+    - name: Download Azure Dependencies Modules
+      uses: azure/powershell@v1
+      with:
+         inlineScript: | 
+                Install-Module -Name Az.Compute -Force -AllowClobber
+                Install-Module -Name Az.Storage -Force -AllowClobber
+                Install-Module -Name Az.Network -Force -AllowClobber 
+                Install-Module -Name Az.Resources -Force -AllowClobber
+         azPSVersion: '5.0.0'
+ 
+    - name: Grant Subscription Access
+      uses: azure/powershell@v1
+      with:
+        inlineScript: |
+             $subscriptionId = "${{ env.ARM_SUBSCRIPTION_ID }}" 
+             $scope = "/subscriptions/$subscriptionId/resourceGroups/${{ inputs.ResourceGroup_Name }}/providers/Microsoft.KeyVault/vaults/${{ inputs.KeyVault_Name }}"
+             if ("${{github.event.inputs.User_type}}" -eq "User") {
+                  $ObjectId = (Get-AzADUser -UserPrincipalName '${{ inputs.Principal_Name }}').Id 
+                  }
+
+             if ("${{github.event.inputs.User_type}}" -eq "Service Principal(SPN)") {
+                  $ObjectId = (Get-AzADServicePrincipal -DisplayName '${{ inputs.Principal_Name }}').Id
+                  }
+
+             if ("${{github.event.inputs.User_type}}" -eq "Groups") {
+                  $ObjectId = (Get-AzADGroup -SearchString '${{ inputs.Principal_Name }}').Id
+                  }  
+                     
+             Write-output "$ObjectId"
+             try {
+                 New-AzRoleAssignment -ObjectId "$ObjectId" -RoleDefinitionName "${{ inputs.Role_Name }}" -Scope "$scope"
+                 Write-Host "Role '${{ inputs.Role_Name }}' assigned to user/service principal/Group '$ObjectId' on the KeyVault '${{ inputs.KeyVault_Name }}'."
+             } catch {
+               Write-Host "An error occurred: $($_.Exception.Message)"
+             }
+        azPSVersion: '5.0.0'
