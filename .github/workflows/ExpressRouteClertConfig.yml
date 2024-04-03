@@ -1,0 +1,210 @@
+name: "Express Route Circuit Alert"
+
+on:
+  workflow_dispatch:
+    inputs:
+      infra_env:
+        type: choice
+        description: 'Select Subscription'
+        options:
+          - 'Sandbox-01'
+          - 'Sandbox-02'
+          - 'mcd-corp-nonprod'
+          - 'mcd-corp-prod'
+        required: true
+
+      resource_group_name:
+        description: "Resource Group Name"
+        required: true
+
+      expressRouteCircuit_name:
+        description: "Express Route Circuit Name"
+        required: true
+
+      severity:
+        description: "Severity level 0 (Critical), 1 (Error), 2 (Warning), 3 (Informational), 4 (Informational)"
+        required: true
+
+      emailRecipient:
+        description: "Recipient Email Address for Action Group"
+        required: true
+
+      MetricName:
+        type: choice
+        description: "The metric used by the rule."
+        options:
+          - BitsInPerSecond
+          - BitsOutPerSecond
+          - PacketsInPerSecond
+          - PacketsOutPerSecond
+          - ProvisionedBandwidth
+          - CircuitConnectionHealth
+          - CircuitState
+          - CircuitAvailability
+          - CircuitLatency
+        required: true
+
+      Operator:
+        type: choice
+        description: "The operator used in the rule condition."
+        options:
+          - 'GreaterThan'
+          - 'LessThan'
+          - 'EqualTo'
+          - 'GreaterThanOrEqual'
+          - 'LessThanOrEqual'
+        required: true
+
+      Threshold:
+        description: "Result or Threshold Value that alert is evaluated against."
+        required: true
+
+      LookBackPeriod:
+        description: "How long (in minutes) to look back when determining whether to trigger an alert based on the threshold."
+
+      CheckFrequency:
+        description: "Regular check frequency"
+
+jobs:
+  ExpressRouteAlert_Review:
+    name: "ExpressRouteAlert_Review"
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Set Environment Variables
+        run: |
+          if [[ "${{ github.event.inputs.infra_env }}" == 'Sandbox-01' ]]; then
+            echo "ARM_CLIENT_ID=${{secrets.CEQ_AZURE_SANDBOX_TF_ARM_CLIENT_ID}}" >> $GITHUB_ENV
+            echo "ARM_CLIENT_SECRET=${{secrets.CEQ_AZURE_SANDBOX_TF_ARM_CLIENT_SECRET}}" >> $GITHUB_ENV
+            echo "ARM_SUBSCRIPTION_ID=${{secrets.CEQ_AZURE_SANDBOX_TF_ARM_SUBS_ID}}" >> $GITHUB_ENV
+            echo "ARM_TENANT_ID=${{secrets.CEQ_AZURE_SANDBOX_TF_ARM_TENANT_ID}}" >> $GITHUB_ENV
+            echo "TFSTATE_RG=cloudeq" >> $GITHUB_ENV
+            echo "TFSTATE_STORAGE_ACCOUNT=ceqstoragecd02" >> $GITHUB_ENV
+            echo "TFSTATE_CONTAINER=tfstate" >> $GITHUB_ENV
+            echo "ENV=Sandbox-01" >> $GITHUB_ENV
+          elif [[ "${{ github.event.inputs.infra_env }}" == 'Sandbox-02' ]]; then
+            echo "ARM_CLIENT_ID=${{secrets.CEQ_AZURE_SANDBOX2_TF_ARM_CLIENT_ID}}" >> $GITHUB_ENV
+            echo "ARM_CLIENT_SECRET=${{secrets.CEQ_AZURE_SANDBOX2_TF_ARM_CLIENT_SECRET}}" >> $GITHUB_ENV
+            echo "ARM_SUBSCRIPTION_ID=${{secrets.CEQ_AZURE_SANDBOX2_TF_ARM_SUBS_ID}}" >> $GITHUB_ENV
+            echo "ARM_TENANT_ID=${{secrets.CEQ_AZURE_SANDBOX2_TF_ARM_TENANT_ID}}" >> $GITHUB_ENV
+            echo "TFSTATE_RG=cloudeq" >> $GITHUB_ENV
+            echo "TFSTATE_STORAGE_ACCOUNT=ceqstoragecd02" >> $GITHUB_ENV
+            echo "TFSTATE_CONTAINER=tfstate" >> $GITHUB_ENV
+            echo "ENV=Sandbox-02" >> $GITHUB_ENV
+          else
+            echo "environment not supported"
+            exit 1
+          fi
+
+      - name: Plan Review Step
+        run: |
+          echo "Creating an alert on expressroute circuit "${{ github.event.inputs.expressRouteCircuit_name }}" in the resource group "${{ github.event.inputs.resource_group_name }}" with metric "${{ github.event.inputs.MetricName }}", severity "${{ github.event.inputs.severity }}", threshold "${{ github.event.inputs.Threshold }}", frequency "${{ github.event.inputs.CheckFrequency }}" and lookback period "${{ github.event.inputs.LookBackPeriod }}"."
+
+  ExpressRouteAlert_Script:
+    name: "ExpressRouteAlert_Script"
+    runs-on: ubuntu-latest
+    needs: ["ExpressRouteAlert_Review"]
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Set Environment Variables
+        run: |
+          if [[ "${{ github.event.inputs.infra_env }}" == 'Sandbox-01' ]]; then
+            echo "ARM_CLIENT_ID=${{secrets.CEQ_AZURE_SANDBOX_TF_ARM_CLIENT_ID}}" >> $GITHUB_ENV
+            echo "ARM_CLIENT_SECRET=${{secrets.CEQ_AZURE_SANDBOX_TF_ARM_CLIENT_SECRET}}" >> $GITHUB_ENV
+            echo "ARM_SUBSCRIPTION_ID=${{secrets.CEQ_AZURE_SANDBOX_TF_ARM_SUBS_ID}}" >> $GITHUB_ENV
+            echo "ARM_TENANT_ID=${{secrets.CEQ_AZURE_SANDBOX_TF_ARM_TENANT_ID}}" >> $GITHUB_ENV
+            echo "TFSTATE_RG=cloudeq" >> $GITHUB_ENV
+            echo "TFSTATE_STORAGE_ACCOUNT=ceqstoragecd02" >> $GITHUB_ENV
+            echo "TFSTATE_CONTAINER=tfstate" >> $GITHUB_ENV
+            echo "ENV=Sandbox-01" >> $GITHUB_ENV
+          elif [[ "${{ github.event.inputs.infra_env }}" == 'Sandbox-02' ]]; then
+            echo "ARM_CLIENT_ID=${{secrets.CEQ_AZURE_SANDBOX2_TF_ARM_CLIENT_ID}}" >> $GITHUB_ENV
+            echo "ARM_CLIENT_SECRET=${{secrets.CEQ_AZURE_SANDBOX2_TF_ARM_CLIENT_SECRET}}" >> $GITHUB_ENV
+            echo "ARM_SUBSCRIPTION_ID=${{secrets.CEQ_AZURE_SANDBOX2_TF_ARM_SUBS_ID}}" >> $GITHUB_ENV
+            echo "ARM_TENANT_ID=${{secrets.CEQ_AZURE_SANDBOX2_TF_ARM_TENANT_ID}}" >> $GITHUB_ENV
+            echo "TFSTATE_RG=cloudeq" >> $GITHUB_ENV
+            echo "TFSTATE_STORAGE_ACCOUNT=ceqstoragecd02" >> $GITHUB_ENV
+            echo "TFSTATE_CONTAINER=tfstate" >> $GITHUB_ENV
+            echo "ENV=Sandbox-02" >> $GITHUB_ENV
+          else
+            echo "environment not supported"
+            exit 1
+          fi
+
+      # Checkout the repository to the GitHub Actions runner
+      - name: Run Azure PowerShell to Login Azure
+        uses: azure/powershell@v1
+        with:
+          inlineScript: |
+              [string][ValidateNotNullOrEmpty()] $SecuredPassword= "${{env.ARM_CLIENT_SECRET}}"
+              $SecuredPassword1 = ConvertTo-SecureString -String $SecuredPassword -AsPlainText -Force
+              $Credential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList '${{env.ARM_CLIENT_ID}}', $SecuredPassword1
+              Connect-AzAccount -ServicePrincipal -TenantId "${{env.ARM_TENANT_ID}}" -SubscriptionId "${{env.ARM_SUBSCRIPTION_ID}}" -Credential $Credential
+          azPSVersion: 'latest'
+
+      - name: Download Azure Dependencies Modules
+        uses: azure/powershell@v1
+        with:
+          inlineScript: |
+            Install-Module -Name Az.Compute -Force -AllowClobber
+            Install-Module -Name Az.Storage -Force -AllowClobber
+            Install-Module -Name Az.Network -Force -AllowClobber 
+            Install-Module -Name Az.Resources -Force -AllowClobber
+          azPSVersion: "latest"
+
+      - name: Alert Step
+        uses: azure/powershell@v1
+        with:
+          inlineScript: |
+            $resource_group_name = "${{ github.event.inputs.resource_group_name }}"
+            $expressRouteCircuit_name = "${{ github.event.inputs.expressRouteCircuit_name }}"
+            # $severity = "${{ github.event.inputs.severity }}"
+            $emailRecipient = "${{ github.event.inputs.emailRecipient }}"
+            $MetricName = "${{ github.event.inputs.MetricName }}"
+            $Operator = "${{ github.event.inputs.Operator }}"
+            # $Threshold = "${{ github.event.inputs.Threshold }}"
+            # $LookBackPeriod = "${{ github.event.inputs.LookBackPeriod }}"
+            # $CheckFrequency = "${{ github.event.inputs.CheckFrequency }}"
+
+            # Creates a new action group receiver object in memory
+            $emailreceiver = New-AzActionGroupReceiver -Name "Monitoring" -EmailReceiver -EmailAddress $emailRecipient
+            
+            # Creates a new or updates an existing action group
+            $actionGroup = Set-AzActionGroup -Name "ExpressRouteAlert_AGRP" -ShortName "Monitoring" -ResourceGroupName $resource_group_name -Receiver $emailreceiver
+
+            $actionGroupId = $actionGroup.Id
+
+            # Expressroute Circuit Alert Rule
+            $ERAlertRuleCondition = New-AzMetricAlertRuleV2Criteria -MetricName $MetricName `
+            -TimeAggregation "average" `
+            -Operator $Operator `
+            -Threshold ${{ inputs.Threshold }}
+
+            $ERwindowSize = New-TimeSpan -Minutes ${{ inputs.LookBackPeriod }} # Window size/Lookback period
+            $ERfrequency = New-TimeSpan -Minutes ${{ inputs.CheckFrequency }} # Frequency/check every
+
+            Add-AzMetricAlertRuleV2 -Name "ExpressRouteCircuitAlert" `
+                -ResourceGroupName $resource_group_name `
+                -WindowSize $ERwindowSize `
+                -Frequency $ERfrequency `
+                -TargetResourceId (Get-AzExpressRouteCircuit -ResourceGroupName $resource_group_name -Name $expressRouteCircuit_name).Id `
+                -Condition $ERAlertRuleCondition `
+                -ActionGroupId $actionGroupId `
+                -Severity ${{ inputs.severity }} `
+                -Description "Setting up monitoring alerts for an Azure ExpressRoute Circuit based on user specified parameters."
+
+          azPSVersion: "latest"
