@@ -1,0 +1,178 @@
+name: Creating New VNet/Subnet
+
+on:
+    workflow_dispatch:
+      inputs:
+        infra_env:
+          type: choice
+          description: 'Select Subscription'
+          options: 
+            - 'Sandbox-01'
+            - 'Sandbox-02'
+            - 'mcd-corp-nonprod'
+            - 'mcd-corp-prod'
+          required: true
+        
+        ResourceGroupName:
+          description: "Provide resource group name."
+          required: true
+
+        VirtualNetworkName:
+          description: "Provide virtual network name."
+          required: true
+
+        Location:
+          description: "Provide Location"
+          required: true  
+
+        AddressPrefix:
+          description: "Enter the CIDR value for this subnet (e.g.,10.0.0.0/16)"
+          required: true
+        
+        SubnetName:
+            description: "Enter the Subnet Name"
+            required: true
+        
+        SubnetPrefix:
+            description: "Enter the CIDR value for this subnet (e.g.,10.0.0.0/24)"
+            required: true
+
+jobs:
+    VnetSubnet_Review :
+        name: "VnetSubnet_Review"
+        runs-on: ubuntu-latest
+    
+        defaults:
+          run:
+            shell: bash
+            
+        steps:
+        - name: Checkout
+          uses: actions/checkout@v2
+          
+        - name: "Setting Environment"
+          env:
+            DEV: ${{ contains(github.event.inputs.infra_env, 'Sandbox-01') }}
+            SANDBOX: ${{ contains(github.event.inputs.infra_env, 'Sandbox-02') }}
+          run: |
+            if ${DEV} == true; then
+              echo "ARM_CLIENT_ID=${{secrets.CEQ_AZURE_SANDBOX_TF_ARM_CLIENT_ID}}" >> $GITHUB_ENV
+              echo "ARM_CLIENT_SECRET=${{secrets.CEQ_AZURE_SANDBOX_TF_ARM_CLIENT_SECRET}}" >> $GITHUB_ENV
+              echo "ARM_SUBSCRIPTION_ID=${{secrets.CEQ_AZURE_SANDBOX_TF_ARM_SUBS_ID}}" >> $GITHUB_ENV
+              echo "ARM_TENANT_ID=${{secrets.CEQ_AZURE_SANDBOX_TF_ARM_TENANT_ID}}" >> $GITHUB_ENV
+              echo "TFSTATE_RG=cloudeq" >> $GITHUB_ENV
+              echo "TFSTATE_STORAGE_ACCOUNT=ceqstoragecd02" >> $GITHUB_ENV
+              echo "TFSTATE_CONTAINER=tfstate" >> $GITHUB_ENV
+              echo "ENV=Sandbox-01" >> $GITHUB_ENV
+            elif ${SANDBOX} == true;
+            then
+              echo "ARM_CLIENT_ID=${{secrets.CEQ_AZURE_SANDBOX2_TF_ARM_CLIENT_ID}}" >> $GITHUB_ENV
+              echo "ARM_CLIENT_SECRET=${{secrets.CEQ_AZURE_SANDBOX2_TF_ARM_CLIENT_SECRET}}" >> $GITHUB_ENV
+              echo "ARM_SUBSCRIPTION_ID=${{secrets.CEQ_AZURE_SANDBOX2_TF_ARM_SUBS_ID}}" >> $GITHUB_ENV
+              echo "ARM_TENANT_ID=${{secrets.CEQ_AZURE_SANDBOX2_TF_ARM_TENANT_ID}}" >> $GITHUB_ENV
+              echo "TFSTATE_RG=cloudeq" >> $GITHUB_ENV
+              echo "TFSTATE_STORAGE_ACCOUNT=ceqstoragecd02" >> $GITHUB_ENV
+              echo "TFSTATE_CONTAINER=tfstate" >> $GITHUB_ENV
+              echo "ENV=Sandbox-02" >> $GITHUB_ENV
+            else
+              echo "environment not supported"
+              exit 1
+            fi     
+        - name: Plan Review 
+          uses: azure/powershell@v1
+          with:
+            inlineScript: |
+                Write-Host "Creating a new virtual network ${{ inputs.VirtualNetworkName }} with a new subnet ${{ inputs.SubnetName }} in the resource group ${{ inputs.ResourceGroupName }} in location ${{ inputs.Location }}."
+            azPSVersion: '5.0.0'
+    
+    VnetSubnetCreation:
+        name: "VnetSubnetCreation"
+        runs-on: ubuntu-latest
+        needs: ["VnetSubnet_Review"]
+
+        # environment: 
+        #     name: Deployment_Review
+
+        defaults:
+            run:
+                shell: bash
+        
+        steps:
+        - name: Checkout
+          uses: actions/checkout@v2
+      
+        - name: "Setting Environment"
+          env:
+            DEV: ${{ contains(github.event.inputs.infra_env, 'Sandbox-01') }}
+            SANDBOX: ${{ contains(github.event.inputs.infra_env, 'Sandbox-02') }}
+          run: |
+            if ${DEV} == true; then
+            echo "ARM_CLIENT_ID=${{secrets.CEQ_AZURE_SANDBOX_TF_ARM_CLIENT_ID}}" >> $GITHUB_ENV
+            echo "ARM_CLIENT_SECRET=${{secrets.CEQ_AZURE_SANDBOX_TF_ARM_CLIENT_SECRET}}" >> $GITHUB_ENV
+            echo "ARM_SUBSCRIPTION_ID=${{secrets.CEQ_AZURE_SANDBOX_TF_ARM_SUBS_ID}}" >> $GITHUB_ENV
+            echo "ARM_TENANT_ID=${{secrets.CEQ_AZURE_SANDBOX_TF_ARM_TENANT_ID}}" >> $GITHUB_ENV
+            echo "TFSTATE_RG=vm-provisioning-tfstate" >> $GITHUB_ENV
+            echo "TFSTATE_STORAGE_ACCOUNT=vmprovisiontfstate" >> $GITHUB_ENV
+            echo "TFSTATE_CONTAINER=tfstate" >> $GITHUB_ENV
+            echo "ENV=Sandbox-01" >> $GITHUB_ENV
+        
+            elif $(SANDBOX) == true;
+            then
+            echo "ARM_CLIENT_ID=${{secrets.CEQ_AZURE_SANDBOX2_TF_ARM_CLIENT_ID}}" >> $GITHUB_ENV
+            echo "ARM_CLIENT_SECRET=${{secrets.CEQ_AZURE_SANDBOX2_TF_ARM_CLIENT_SECRET}}" >> $GITHUB_ENV
+            echo "ARM_SUBSCRIPTION_ID=${{secrets.CEQ_AZURE_SANDBOX2_TF_ARM_SUBS_ID}}" >> $GITHUB_ENV
+            echo "ARM_TENANT_ID=${{secrets.CEQ_AZURE_SANDBOX2_TF_ARM_TENANT_ID}}" >> $GITHUB_ENV
+            echo "TFSTATE_RG=cloudeq" >> $GITHUB_ENV
+            echo "TFSTATE_STORAGE_ACCOUNT=ceqstoragecd02" >> $GITHUB_ENV
+            echo "TFSTATE_CONTAINER=tfstate" >> $GITHUB_ENV
+            echo "ENV=Sandbox-02" >> $GITHUB_ENV
+            
+            else
+            echo "environment not supported"
+            exit 1
+            fi
+
+        - name: Run Azure PowerShell to Login Azure
+          uses: azure/powershell@v1
+          with:
+            inlineScript: |
+                [string][ValidateNotNullOrEmpty()] $SecuredPassword= "${{env.ARM_CLIENT_SECRET}}"
+                $SecuredPassword1 = ConvertTo-SecureString -String $SecuredPassword -AsPlainText -Force
+                $Credential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList '${{env.ARM_CLIENT_ID}}', $SecuredPassword1
+                Connect-AzAccount -ServicePrincipal -TenantId "${{env.ARM_TENANT_ID}}" -SubscriptionId "${{env.ARM_SUBSCRIPTION_ID}}" -Credential $Credential
+            azPSVersion: 'latest'  
+
+        - name: Download Azure Dependencies Modules
+          uses: azure/powershell@v1
+          with: 
+            inlineScript: |
+                Install-Module -Name Az.Compute -Force -AllowClobber
+                Install-Module -Name Az.Storage -Force -AllowClobber
+                Install-Module -Name Az.Network -Force -AllowClobber
+            azPSVersion: 'latest'
+
+        - name : VnetSubnetCreation-Script
+          uses: azure/powershell@v1
+          with:
+            inlineScript: |
+                Write-output "${{ inputs.ResourceGroupName }}"
+                Write-output "${{ inputs.AddressPrefix }}"
+                Write-output "${{ inputs.Location }}"
+                Write-output "${{ inputs.VirtualNetworkName }}"
+                Write-output "${{ inputs.SubnetName }}"
+                Write-output "${{ inputs.SubnetPrefix }}"
+                
+                try {
+                    New-AzVirtualNetwork -Name ${{ inputs.VirtualNetworkName }} -ResourceGroupName ${{ inputs.ResourceGroupName }} -Location '${{ inputs.Location }}' -AddressPrefix '${{ inputs.AddressPrefix }}'
+                    $vnet = Get-AzVirtualNetwork -Name ${{ inputs.VirtualNetworkName }} -ResourceGroupName ${{ inputs.ResourceGroupName }}
+                    $subnet = Add-AzVirtualNetworkSubnetConfig -Name ${{ inputs.SubnetName }} -VirtualNetwork $vnet -AddressPrefix ${{ inputs.SubnetPrefix }}
+                    $vnet | Set-AzVirtualNetwork
+                    
+                  } catch {
+                    Write-Information "An error occurred:"
+                    $errorMessage = $_.Exception.Message
+                    Write-Host "$errorMessage"
+                    $errorMessage | Out-File -FilePath "Error.txt" -Force
+                    throw
+                  }
+            azPSVersion: 'latest'
