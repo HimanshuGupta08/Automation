@@ -1,0 +1,321 @@
+name: 'Connectivity_check_via_Network_Watcher'
+
+on:
+  workflow_dispatch:
+    inputs:
+      infra_env:
+        type: choice
+        description: 'Select Subscription'
+        options: 
+          - 'MCD-CORP-PROD-01'
+          - 'MCD-CORP-NONPROD-01'
+          - 'MCD-CORP-SANDBOX-01'
+          
+      ResourceGroup_Name:
+         description: 'Provide RG Name'
+         required: true
+         
+      VirtualMachine_Name:
+         description: 'Provide Target VM Name'
+         required: true
+         
+      Location:
+          description: 'Provide a location'
+          required: true
+         
+      Protocol_Name:
+         description: 'Provide Protocol'
+         required: true
+         type: choice
+         options:
+         - '*'
+         - TCP
+         - UDP
+         - ICMP
+         
+      Port_Number:
+         description: 'Provide Destination Port Number'
+         required: true
+         
+      inbound_or_outbound:
+        description: "Select traffic flow direction"
+        required: true
+        type: choice
+        options:
+        - Inbound
+        - Outbound
+        
+      Source_ip:
+        description: "Provide Source IP Address"
+        required: true
+        
+      Destination_ip:
+        description: "Provide Destination IP Address"
+        required: true
+
+env:
+  API_KEY: ${{ secrets.CEQ_MAILJET_API_KEY }} 
+  API_SECRET: ${{ secrets.CEQ_MAILJET_API_SECRET }}
+
+jobs:
+  Connectivity_Check_Review :
+    name: "Network_Watcher_Review"
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        shell: bash
+        
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+      
+    - name: "Setting Environment"
+      env:
+        SANDBOX_ENV: ${{ github.event.inputs.infra_env == 'MCD-CORP-SANDBOX-01' }}
+        NONPROD_ENV: ${{ github.event.inputs.infra_env == 'MCD-CORP-NONPROD-01' }}
+        PROD_ENV: ${{ github.event.inputs.infra_env == 'MCD-CORP-PROD-01' }}
+      run: |
+        if ${SANDBOX_ENV} == true; then
+          echo "ARM_CLIENT_ID=${{secrets.CEQ_AZURE_SANDBOX01_TF_ARM_CLIENT_ID}}" >> $GITHUB_ENV
+          echo "ARM_CLIENT_SECRET=${{secrets.CEQ_AZURE_SANDBOX01_TF_ARM_CLIENT_SECRET}}" >> $GITHUB_ENV
+          echo "ARM_SUBSCRIPTION_ID=${{secrets.CEQ_AZURE_SANDBOX01_TF_ARM_SUBS_ID}}" >> $GITHUB_ENV
+          echo "ARM_TENANT_ID=${{secrets.CEQ_AZURE_SANDBOX01_TF_ARM_TENANT_ID}}" >> $GITHUB_ENV
+          echo "TFSTATE_RG=MCD-POST-TASK-TEST-CEQ" >> $GITHUB_ENV
+          echo "TFSTATE_STORAGE_ACCOUNT=mcdmacfeeinstaller" >> $GITHUB_ENV
+          echo "TFSTATE_CONTAINER=tfstate" >> $GITHUB_ENV
+          echo "ENV=sandbox" >> $GITHUB_ENV
+        elif ${PROD_ENV} == true;
+        then
+          echo "ARM_CLIENT_ID=${{secrets.CEQ_AZURE_GITHUB_DEV_OPS_CLIENT_ID}}" >> $GITHUB_ENV
+          echo "ARM_CLIENT_SECRET=${{secrets.CEQ_AZURE_GITHUB_DEV_OPS_CLIENT_SECRET}}" >> $GITHUB_ENV
+          echo "ARM_SUBSCRIPTION_ID=${{secrets.CEQ_AZURE_GITHUB_PROD01_TF_ARM_SUBS_ID}}" >> $GITHUB_ENV
+          echo "ARM_TENANT_ID=${{secrets.CEQ_AZURE_GITHUB_DEV_OPS_TENANT_ID}}" >> $GITHUB_ENV
+          echo "TFSTATE_RG=RG-2W-IMAGE-PROD" >> $GITHUB_ENV
+          echo "TFSTATE_STORAGE_ACCOUNT=mcdposttaskprodstorage" >> $GITHUB_ENV
+          echo "TFSTATE_CONTAINER=tfstate" >> $GITHUB_ENV
+          echo "ENV=prod" >> $GITHUB_ENV
+        elif ${NONPROD_ENV} == true;
+        then
+          echo "ARM_CLIENT_ID=${{secrets.CEQ_AZURE_GITHUB_DEV_OPS_CLIENT_ID}}" >> $GITHUB_ENV
+          echo "ARM_CLIENT_SECRET=${{secrets.CEQ_AZURE_GITHUB_DEV_OPS_CLIENT_SECRET}}" >> $GITHUB_ENV
+          echo "ARM_SUBSCRIPTION_ID=${{secrets.CEQ_AZURE_GITHUB_NON_PROD_TF_ARM_SUBS_ID}}" >> $GITHUB_ENV
+          echo "ARM_TENANT_ID=${{secrets.CEQ_AZURE_GITHUB_DEV_OPS_TENANT_ID}}" >> $GITHUB_ENV
+          echo "TFSTATE_RG=ceq-vm-provissioning-tfstate" >> $GITHUB_ENV
+          echo "TFSTATE_STORAGE_ACCOUNT=ceqvmtfstatenonprod" >> $GITHUB_ENV
+          echo "TFSTATE_CONTAINER=tfstate" >> $GITHUB_ENV
+          echo "ENV=nonprod" >> $GITHUB_ENV
+        else
+          echo "environment not supported"
+          Exit 1
+        fi      
+
+    - name: Plan Review 
+      uses: azure/powershell@v1
+      with:
+          inlineScript: |
+              echo "Server connectivity is being checked using network watcher with Source IP ${{ inputs.Source_ip }}, Destination IP ${{ inputs.Destination_ip }}, Port ${{ inputs.Port_Number }}, Protocol ${{ inputs.Protocol_Name }} and traffic flow direction ${{ inputs.inbound_or_outbound }} in the resource group ${{ inputs.ResourceGroup_Name }}."
+          azPSVersion: 'latest'
+          
+  Connectivity_Check:
+     name: "Connectivity_Check"
+     runs-on: ubuntu-latest
+     needs: ["Connectivity_Check_Review"]
+
+     environment:
+      name: Deployment_Review
+
+     defaults:
+      run:
+        shell: bash
+        
+     steps:
+     - name: Checkout
+       uses: actions/checkout@v3
+      
+     - name: "Setting Environment"
+       env:
+        SANDBOX_ENV: ${{ github.event.inputs.infra_env == 'MCD-CORP-SANDBOX-01' }}
+        NONPROD_ENV: ${{ github.event.inputs.infra_env == 'MCD-CORP-NONPROD-01' }}
+        PROD_ENV: ${{ github.event.inputs.infra_env == 'MCD-CORP-PROD-01' }}
+
+       run: |
+          if ${SANDBOX_ENV} == true; then
+            echo "ARM_CLIENT_ID=${{secrets.CEQ_AZURE_SANDBOX01_TF_ARM_CLIENT_ID}}" >> $GITHUB_ENV
+            echo "ARM_CLIENT_SECRET=${{secrets.CEQ_AZURE_SANDBOX01_TF_ARM_CLIENT_SECRET}}" >> $GITHUB_ENV
+            echo "ARM_SUBSCRIPTION_ID=${{secrets.CEQ_AZURE_SANDBOX01_TF_ARM_SUBS_ID}}" >> $GITHUB_ENV
+            echo "ARM_TENANT_ID=${{secrets.CEQ_AZURE_SANDBOX01_TF_ARM_TENANT_ID}}" >> $GITHUB_ENV
+            echo "TFSTATE_RG=MCD-POST-TASK-TEST-CEQ" >> $GITHUB_ENV
+            echo "TFSTATE_STORAGE_ACCOUNT=mcdmacfeeinstaller" >> $GITHUB_ENV
+            echo "TFSTATE_CONTAINER=tfstate" >> $GITHUB_ENV
+            echo "ENV=sandbox" >> $GITHUB_ENV
+          elif ${PROD_ENV} == true;
+          then
+            echo "ARM_CLIENT_ID=${{secrets.CEQ_AZURE_GITHUB_DEV_OPS_CLIENT_ID}}" >> $GITHUB_ENV
+            echo "ARM_CLIENT_SECRET=${{secrets.CEQ_AZURE_GITHUB_DEV_OPS_CLIENT_SECRET}}" >> $GITHUB_ENV
+            echo "ARM_SUBSCRIPTION_ID=${{secrets.CEQ_AZURE_GITHUB_PROD01_TF_ARM_SUBS_ID}}" >> $GITHUB_ENV
+            echo "ARM_TENANT_ID=${{secrets.CEQ_AZURE_GITHUB_DEV_OPS_TENANT_ID}}" >> $GITHUB_ENV
+            echo "TFSTATE_RG=RG-2W-IMAGE-PROD" >> $GITHUB_ENV
+            echo "TFSTATE_STORAGE_ACCOUNT=mcdposttaskprodstorage" >> $GITHUB_ENV
+            echo "TFSTATE_CONTAINER=tfstate" >> $GITHUB_ENV
+            echo "ENV=prod" >> $GITHUB_ENV
+          elif ${NONPROD_ENV} == true;
+          then
+            echo "ARM_CLIENT_ID=${{secrets.CEQ_AZURE_GITHUB_DEV_OPS_CLIENT_ID}}" >> $GITHUB_ENV
+            echo "ARM_CLIENT_SECRET=${{secrets.CEQ_AZURE_GITHUB_DEV_OPS_CLIENT_SECRET}}" >> $GITHUB_ENV
+            echo "ARM_SUBSCRIPTION_ID=${{secrets.CEQ_AZURE_GITHUB_NON_PROD_TF_ARM_SUBS_ID}}" >> $GITHUB_ENV
+            echo "ARM_TENANT_ID=${{secrets.CEQ_AZURE_GITHUB_DEV_OPS_TENANT_ID}}" >> $GITHUB_ENV
+            echo "TFSTATE_RG=ceq-vm-provissioning-tfstate" >> $GITHUB_ENV
+            echo "TFSTATE_STORAGE_ACCOUNT=ceqvmtfstatenonprod" >> $GITHUB_ENV
+            echo "TFSTATE_CONTAINER=tfstate" >> $GITHUB_ENV
+            echo "ENV=nonprod" >> $GITHUB_ENV
+          else
+            echo "environment not supported"
+            Exit 1
+          fi
+      
+    # Checkout the repository to the GitHub Actions runner 
+     - name: Login to azure
+       uses: azure/login@v1
+       with:
+           creds: '{"clientId":"${{ env.ARM_CLIENT_ID }}","clientSecret":"${{ env.ARM_CLIENT_SECRET }}","subscriptionId":"${{ env.ARM_SUBSCRIPTION_ID }}","tenantId":"${{ env.ARM_TENANT_ID }}"}'
+           enable-AzPSSession: true
+ 
+     - name: Download Azure Dependencies Modules
+       uses: azure/powershell@v1
+       with:
+          inlineScript: |
+            try {
+              Install-Module -Name Az.Compute -Force -AllowClobber
+              Install-Module -Name Az.Storage -Force -AllowClobber
+              Install-Module -Name Az.Network -Force -AllowClobber
+            } catch 
+            {
+              Write-Information "An error occurred:"
+              $errorMessage = $_.Exception.Message
+              Write-Host "$errorMessage"
+              $errorMessage | Out-File -FilePath "Error.txt" -Force
+              throw
+            }
+          azPSVersion: 'latest'
+
+     - name: Connectivity_Check_Step 
+       uses: azure/powershell@v1
+       with:
+          inlineScript: |
+            Write-output "Resource Group: ${{ inputs.ResourceGroup_Name }}"
+            Write-output "virtual machine: ${{ inputs.VirtualMachine_Name}}"
+            Write-output "Source ip: ${{ inputs.Source_ip }}"
+            Write-output "Destination ip: ${{ inputs.Destination_ip }}"
+            Write-output "Protocol: ${{ inputs.Protocol_Name }}"
+            Write-output "Port: ${{ inputs.Port_Number }}"
+            Write-output "Location: ${{ inputs.Location }}"
+            Write-output "Direction: ${{ inputs.inbound_or_outbound }}"
+            
+            $RgName = "${{ inputs.ResourceGroup_Name }}"
+            $VMName = "${{ inputs.VirtualMachine_Name }}"
+            $SRIp = "${{ inputs.Source_ip }}"
+            $DSIp = "${{ inputs.Destination_ip }}"
+            $Location = "${{ inputs.Location }}"
+            $Port = "${{ inputs.Port_Number }}"
+            $pro = "${{ inputs.Protocol_Name }}"
+            $Direction = "${{ inputs.inbound_or_outbound }}"
+
+            $In = "${{ contains(github.event.inputs.inbound_or_outbound, 'Inbound') }}"
+            $Out = "${{ contains(github.event.inputs.inbound_or_outbound, 'Outbound') }}"
+            
+            try {
+            if(${In} -eq $true){  
+                echo "For Inbound"
+                $profile = New-AzNetworkWatcherNetworkConfigurationDiagnosticProfile -Direction Inbound -Protocol $pro -Source $SRIp -Destination $DSIp -DestinationPort $Port
+                $vm = Get-AzVM -Name $VMName -ResourceGroupName $RgName
+                Invoke-AzNetworkWatcherNetworkConfigurationDiagnostic -Location $Location -TargetResourceId $vm.Id -Profile $profile | Format-List
+              } 
+              else {
+                echo "For Outbound"
+                $profile = New-AzNetworkWatcherNetworkConfigurationDiagnosticProfile -Direction Outbound -Protocol $pro -Source $SRIp -Destination $DSIp -DestinationPort $Port
+                $vm = Get-AzVM -Name $VMName -ResourceGroupName $RgName
+                Invoke-AzNetworkWatcherNetworkConfigurationDiagnostic -Location $Location -TargetResourceId $vm.Id -Profile $profile | Format-List
+                }
+                }
+                catch 
+                {
+                  Write-Information "An error occurred:"
+                  $errorMessage = $_.Exception.Message
+                  Write-Host "$errorMessage"
+                  $errorMessage | Out-File -FilePath "Error.txt" -Force
+                  throw
+            }
+
+          azPSVersion: 'latest'
+
+     - name: Upload artifact
+       uses: actions/upload-artifact@v2
+       with:
+         name: Error
+         path: Error.txt
+       if: always()
+          
+  SendEmail:
+    name: "Sending Email"
+    runs-on: ubuntu-latest
+            
+    needs: ["Connectivity_Check"]
+    if: |
+      always() &&
+        (needs.Connectivity_Check.result == 'success' || needs.Connectivity_Check.result == 'skipped' || needs.Connectivity_Check.result == 'failure' )
+  
+    defaults:
+      run:
+        shell: bash
+                
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+  
+      - name: Installing Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      - name: Downloading Python Dependencies
+        run: |
+          pip install requests
+          pip install mailjet-rest
+
+      - name: Download artifact
+        uses: actions/download-artifact@v2
+        with:
+          name: Error
+          path: ${{ github.workspace }}
+        continue-on-error: true
+
+      - name: Send Email Notification on Success
+        run: |
+          if [ "${{ needs.Connectivity_Check.result}}" == 'success' ] && [ "${{ contains(github.event.inputs.inbound_or_outbound, 'Inbound') }}" == 'true' ]; then
+            text="Pipeline triggered by: ${{ github.actor }}. "$'\n'"Success Message: Server connectivity check using network watcher with Source IP ${{ inputs.Source_ip }}, Destination IP ${{ inputs.Destination_ip }}, Port ${{ inputs.Port_Number }}, Protocol ${{ inputs.Protocol_Name }}, traffic flow direction ${{ inputs.inbound_or_outbound }} in the resource group ${{ inputs.ResourceGroup_Name }} is successful."
+            echo "$text"
+            subject="Connectivity check Pipeline executed successfully"
+            python ./Scripts/sendmail.py "$text" "$subject"
+
+          elif [ "${{ needs.Connectivity_Check.result}}" == 'success' ] && [ "${{ contains(github.event.inputs.inbound_or_outbound, 'Outbound') }}" == 'true' ]; then
+            text="Pipeline triggered by: ${{ github.actor }}. "$'\n'"Success Message: Server connectivity check using network watcher with Source IP ${{ inputs.Source_ip }}, Destination IP ${{ inputs.Destination_ip }}, Port ${{ inputs.Port_Number }}, Protocol ${{ inputs.Protocol_Name }}, traffic flow direction ${{ inputs.inbound_or_outbound }} in the resource group ${{ inputs.ResourceGroup_Name }} is successful."
+            echo "$text"
+            subject="Connectivity check Pipeline executed successfully"
+            python ./Scripts/sendmail.py "$text" "$subject"
+            
+          elif [ "${{ needs.Connectivity_Check.result}}" == 'failure' ] && [ "${{ contains(github.event.inputs.inbound_or_outbound, 'Inbound') }}" == 'true' ]; then
+            text="Pipeline triggered by: ${{ github.actor }}. "$'\n'"Error Message: Server connectivity check using network watcher with Source IP ${{ inputs.Source_ip }}, Destination IP ${{ inputs.Destination_ip }}, Port ${{ inputs.Port_Number }}, Protocol ${{ inputs.Protocol_Name }}, traffic flow direction ${{ inputs.inbound_or_outbound }} in the resource group ${{ inputs.ResourceGroup_Name }} is failed."$'\n'"Error Details: '$(cat ${{ github.workspace }}/Error.txt)'."
+            echo "$text"
+            subject="Connectivity check Pipeline execution failed"
+            python ./Scripts/sendmail.py "$text" "$subject"
+            
+          elif [ "${{ needs.Connectivity_Check.result}}" == 'failure' ] && [ "${{ contains(github.event.inputs.inbound_or_outbound, 'Outbound') }}" == 'true' ]; then
+            text="Pipeline triggered by: ${{ github.actor }}. "$'\n'"Error Message: Server connectivity check using network watcher with Source IP ${{ inputs.Source_ip }}, Destination IP ${{ inputs.Destination_ip }}, Port ${{ inputs.Port_Number }}, Protocol ${{ inputs.Protocol_Name }}, traffic flow direction ${{ inputs.inbound_or_outbound }} in the resource group ${{ inputs.ResourceGroup_Name }} is failed."$'\n'"Error Details: '$(cat ${{ github.workspace }}/Error.txt)'."
+            echo "$text"
+            subject="Connectivity check Pipeline execution failed"
+            python ./Scripts/sendmail.py "$text" "$subject"
+          else
+            echo "Unexpected job result."
+            exit 1
+          fi
