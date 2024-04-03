@@ -1,0 +1,169 @@
+name: 'ServerResize'
+
+on:
+  workflow_dispatch:
+    inputs:
+      infra_env:
+        type: choice
+        description: 'Select Subscription'
+        options: 
+          - 'Sandbox-01'
+          - 'Sandbox-02'
+          - 'mcd-corp-nonprod'
+          - 'mcd-corp-prod'
+      
+      ResourceGroupName:
+        description: "Provide resource group name."
+        required: true
+
+      VirtualMachineName:
+        description: "Provide virtual machine name."
+        required: true
+
+      VirtualMachineSize:
+        description: "Provide new virtual machine size."
+        required: true  
+
+jobs:
+  ServerResize_Review :
+    name: "ServerResize_Review"
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        shell: bash
+        
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+      
+    - name: "Setting Environment"
+      env:
+        DEV: ${{ contains(github.event.inputs.infra_env, 'Sandbox-01') }}
+        SANDBOX: ${{ contains(github.event.inputs.infra_env, 'Sandbox-02') }}
+      run: |
+        if ${DEV} == true; then
+          echo "ARM_CLIENT_ID=${{secrets.CEQ_AZURE_SANDBOX_TF_ARM_CLIENT_ID}}" >> $GITHUB_ENV
+          echo "ARM_CLIENT_SECRET=${{secrets.CEQ_AZURE_SANDBOX_TF_ARM_CLIENT_SECRET}}" >> $GITHUB_ENV
+          echo "ARM_SUBSCRIPTION_ID=${{secrets.CEQ_AZURE_SANDBOX_TF_ARM_SUBS_ID}}" >> $GITHUB_ENV
+          echo "ARM_TENANT_ID=${{secrets.CEQ_AZURE_SANDBOX_TF_ARM_TENANT_ID}}" >> $GITHUB_ENV
+          echo "TFSTATE_RG=cloudeq" >> $GITHUB_ENV
+          echo "TFSTATE_STORAGE_ACCOUNT=ceqstoragecd02" >> $GITHUB_ENV
+          echo "TFSTATE_CONTAINER=tfstate" >> $GITHUB_ENV
+          echo "ENV=Sandbox-01" >> $GITHUB_ENV
+        elif ${SANDBOX} == true;
+        then
+          echo "ARM_CLIENT_ID=${{secrets.CEQ_AZURE_SANDBOX2_TF_ARM_CLIENT_ID}}" >> $GITHUB_ENV
+          echo "ARM_CLIENT_SECRET=${{secrets.CEQ_AZURE_SANDBOX2_TF_ARM_CLIENT_SECRET}}" >> $GITHUB_ENV
+          echo "ARM_SUBSCRIPTION_ID=${{secrets.CEQ_AZURE_SANDBOX2_TF_ARM_SUBS_ID}}" >> $GITHUB_ENV
+          echo "ARM_TENANT_ID=${{secrets.CEQ_AZURE_SANDBOX2_TF_ARM_TENANT_ID}}" >> $GITHUB_ENV
+          echo "TFSTATE_RG=cloudeq" >> $GITHUB_ENV
+          echo "TFSTATE_STORAGE_ACCOUNT=ceqstoragecd02" >> $GITHUB_ENV
+          echo "TFSTATE_CONTAINER=tfstate" >> $GITHUB_ENV
+          echo "ENV=Sandbox-02" >> $GITHUB_ENV
+        else
+          echo "environment not supported"
+          exit 1
+        fi     
+
+    - name: Plan Review 
+      uses: azure/powershell@v1
+      with:
+        inlineScript: |
+          Write-Host "VM Resize is being Updated to this Server '${{ inputs.VirtualMachineName}}' in this resourcegroup '${{inputs.ResourceGroupName}}' with this new size '${{inputs.VirtualMachineSize}}'."
+        azPSVersion: '5.0.0'
+    
+  ServerResize:
+     name: "ServerResize"
+     runs-on: ubuntu-latest
+     needs: ["ServerResize_Review"]
+
+     environment: 
+      name: Deployment_Review
+
+     defaults:
+      run:
+        shell: bash
+        
+     steps:
+     - name: Checkout
+       uses: actions/checkout@v2
+      
+     - name: "Setting Environment"
+       env:
+        DEV: ${{ contains(github.event.inputs.infra_env, 'Sandbox-01') }}
+        SANDBOX: ${{ contains(github.event.inputs.infra_env, 'Sandbox-02') }}
+       run: |
+        if ${DEV} == true; then
+          echo "ARM_CLIENT_ID=${{secrets.CEQ_AZURE_SANDBOX_TF_ARM_CLIENT_ID}}" >> $GITHUB_ENV
+          echo "ARM_CLIENT_SECRET=${{secrets.CEQ_AZURE_SANDBOX_TF_ARM_CLIENT_SECRET}}" >> $GITHUB_ENV
+          echo "ARM_SUBSCRIPTION_ID=${{secrets.CEQ_AZURE_SANDBOX_TF_ARM_SUBS_ID}}" >> $GITHUB_ENV
+          echo "ARM_TENANT_ID=${{secrets.CEQ_AZURE_SANDBOX_TF_ARM_TENANT_ID}}" >> $GITHUB_ENV
+          echo "TFSTATE_RG=vm-provisioning-tfstate" >> $GITHUB_ENV
+          echo "TFSTATE_STORAGE_ACCOUNT=vmprovisiontfstate" >> $GITHUB_ENV
+          echo "TFSTATE_CONTAINER=tfstate" >> $GITHUB_ENV
+          echo "ENV=Sandbox-01" >> $GITHUB_ENV
+        
+        elif $(SANDBOX) == true;
+        then
+        echo "ARM_CLIENT_ID=${{secrets.CEQ_AZURE_SANDBOX2_TF_ARM_CLIENT_ID}}" >> $GITHUB_ENV
+        echo "ARM_CLIENT_SECRET=${{secrets.CEQ_AZURE_SANDBOX2_TF_ARM_CLIENT_SECRET}}" >> $GITHUB_ENV
+        echo "ARM_SUBSCRIPTION_ID=${{secrets.CEQ_AZURE_SANDBOX2_TF_ARM_SUBS_ID}}" >> $GITHUB_ENV
+        echo "ARM_TENANT_ID=${{secrets.CEQ_AZURE_SANDBOX2_TF_ARM_TENANT_ID}}" >> $GITHUB_ENV
+        echo "TFSTATE_RG=cloudeq" >> $GITHUB_ENV
+        echo "TFSTATE_STORAGE_ACCOUNT=ceqstoragecd02" >> $GITHUB_ENV
+        echo "TFSTATE_CONTAINER=tfstate" >> $GITHUB_ENV
+        echo "ENV=Sandbox-02" >> $GITHUB_ENV
+        
+        else
+          echo "environment not supported"
+          exit 1
+        fi
+
+     - name: Login to azure
+       uses: azure/login@v1
+       with:
+        creds: '{"clientId":"${{ env.ARM_CLIENT_ID }}","clientSecret":"${{ env.ARM_CLIENT_SECRET }}","subscriptionId":"${{ env.ARM_SUBSCRIPTION_ID }}","tenantId":"${{ env.ARM_TENANT_ID }}"}'
+        enable-AzPSSession: true
+
+     - name: Download Azure Dependencies Modules
+       uses: azure/powershell@v1
+       with: 
+        inlineScript: |
+          Install-Module -Name Az.Compute -Force -AllowClobber
+          Install-Module -Name Az.Storage -Force -AllowClobber
+          Install-Module -Name Az.Network -Force -AllowClobber
+        azPSVersion: '5.0.0'
+
+     - name: VM Resize Step 
+       uses: azure/powershell@v1
+       with:
+           inlineScript: |
+              Write-output "${{ inputs.VirtualMachineName }}"
+              Write-output "${{ inputs.ResourceGroupName }}"
+              Write-output "${{ inputs.VirtualMachineSize }}"
+              $RgName = "${{ inputs.ResourceGroupName }}"
+              $VmName = "${{ inputs.VirtualMachineName }}"
+              $VMSize = "${{ inputs.VirtualMachineSize }}"
+              
+              try {
+              $vm = Get-AzVM -ResourceGroupName $RgName -Name $VmName
+              Stop-AzVM -ResourceGroupName $RgName -Name $vmName -Force
+              
+              $Location = $vm.Location
+              $OsDisk = $vm.StorageProfile.OsDisk.ManagedDisk.Id
+                 
+              $date = Get-Date -Format "dd-MM-yyyy-HH-mm"
+              $snapshotName = ($VmName.ToString() + "_Adhoc_"  +$date.ToString())
+                                   
+              $snapshotconfig =  New-AzSnapshotConfig -SourceUri $OsDisk -Location $Location -AccountType "Standard_LRS" -EncryptionType "EncryptionAtRestWithPlatformKey" -NetworkAccessPolicy "AllowAll" -CreateOption "Copy"
+              New-AzSnapshot -ResourceGroupName $RgName -SnapshotName $snapshotName -Snapshot $snapshotconfig
+             
+              $vm.HardwareProfile.VmSize = $VMSize
+              Update-AzVM -VM $vm -ResourceGroupName $RgName
+              Start-AzVM -ResourceGroupName $RgName -Name $vmName
+              }catch {
+                Write-Host "An error occurred: $($_.Exception.Message)"
+              }
+             
+           azPSVersion: '5.0.0'
